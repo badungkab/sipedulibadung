@@ -269,6 +269,15 @@
                     <form id="formBantuan">
                         <div class="mb-3">
                             <label class="form-label">Pilih Penerima <span class="text-danger">*</span></label>
+
+                            <!-- Search Penerima -->
+                            <div class="input-group mb-2">
+                                <span class="input-group-text bg-white"><i class="bi bi-search text-success"></i></span>
+                                <input type="text" class="form-control" id="inputSearchPenerima" placeholder="Cari nama, NIK, atau kecamatan..." autocomplete="off" oninput="filterPenerima()">
+                                <button type="button" class="btn btn-outline-secondary" id="btnClearSearchPenerima" onclick="clearSearchPenerima()" title="Hapus pencarian"><i class="bi bi-x-lg"></i></button>
+                            </div>
+                            <small class="text-muted d-block mb-2" id="infoSearchPenerima">Ketik nama, NIK, atau kecamatan untuk mencari penerima.</small>
+
                             <select class="form-select" name="disabilitas_id" id="selectPenerima" required onchange="autoFillBantuan()">
                                 <option value="">-- Pilih dari daftar --</option>
                             </select>
@@ -351,6 +360,27 @@
             await populateKecamatan('filterKecamatan');
             await loadDropdownDisabilitas();
             await loadBantuan();
+
+            const inputSearch = document.getElementById('inputSearchPenerima');
+            if (inputSearch) {
+                inputSearch.addEventListener('input', filterPenerima);
+            }
+
+            const modal = document.getElementById('modalBantuan');
+            if (modal) {
+                modal.addEventListener('shown.bs.modal', () => {
+                    const input = document.getElementById('inputSearchPenerima');
+                    if (input) input.focus();
+                });
+
+                modal.addEventListener('hidden.bs.modal', () => {
+                    clearSearchPenerima();
+                    document.getElementById('formBantuan')?.reset();
+                    document.getElementById('infoNama').value = '';
+                    document.getElementById('infoNik').value = '';
+                    document.getElementById('infoKecamatan').value = '';
+                });
+            }
         });
 
         function toggleSidebar() {
@@ -366,16 +396,64 @@
         async function loadDropdownDisabilitas() {
             const result = await getDisabilitas({});
             if (result && result.success) {
-                dataDisabilitas = result.data;
-                const select = document.getElementById('selectPenerima');
-                select.innerHTML = '<option value="">-- Pilih dari daftar --</option>' + 
-                    result.data.map(d => `<option value="${d.id}" 
-                        data-nama="${d.nama || ''}" 
-                        data-nik="${d.nik || ''}" 
-                        data-kecamatan="${d.kecamatan || ''}">
-                        ${d.nama || '-'} - ${d.nik || '-'} (${d.kecamatan || '-'})
-                    </option>`).join('');
+                dataDisabilitas = result.data || [];
+                renderDropdownPenerima(dataDisabilitas);
+                updateInfoSearchPenerima(dataDisabilitas.length);
             }
+        }
+
+        function renderDropdownPenerima(data) {
+            const select = document.getElementById('selectPenerima');
+            if (!select) return;
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">-- Pilih dari daftar --</option>' + (data || []).map(d => `<option value="${escapeHtml(d.id || '')}" data-nama="${escapeHtml(d.nama || '')}" data-nik="${escapeHtml(d.nik || '')}" data-kecamatan="${escapeHtml(d.kecamatan || '')}">${escapeHtml(d.nama || '-')} - ${escapeHtml(d.nik || '-')} (${escapeHtml(d.kecamatan || '-')})</option>`).join('');
+            if (currentValue && (data || []).some(d => String(d.id) === String(currentValue))) {
+                select.value = currentValue;
+                autoFillBantuan();
+            }
+        }
+
+        // Cari penerima berdasarkan nama, NIK, atau kecamatan
+        function filterPenerima() {
+            const keyword = (document.getElementById('inputSearchPenerima')?.value || '').trim().toLowerCase();
+            if (!keyword) {
+                renderDropdownPenerima(dataDisabilitas);
+                updateInfoSearchPenerima(dataDisabilitas.length);
+                return;
+            }
+            const hasil = dataDisabilitas.filter(d =>
+                String(d.nama || '').toLowerCase().includes(keyword) ||
+                String(d.nik || '').toLowerCase().includes(keyword) ||
+                String(d.kecamatan || '').toLowerCase().includes(keyword)
+            );
+            renderDropdownPenerima(hasil);
+            updateInfoSearchPenerima(hasil.length, keyword);
+
+            // Jika hanya ada satu hasil, pilih otomatis dan isi data penerima.
+            if (hasil.length === 1) {
+                const select = document.getElementById('selectPenerima');
+                select.value = String(hasil[0].id);
+                autoFillBantuan();
+            }
+        }
+
+        function clearSearchPenerima() {
+            const input = document.getElementById('inputSearchPenerima');
+            if (input) { input.value = ''; input.focus(); }
+            renderDropdownPenerima(dataDisabilitas);
+            updateInfoSearchPenerima(dataDisabilitas.length);
+        }
+
+        function updateInfoSearchPenerima(jumlah, keyword = '') {
+            const info = document.getElementById('infoSearchPenerima');
+            if (!info) return;
+            info.innerHTML = keyword
+                ? (jumlah > 0 ? `<i class="bi bi-check-circle text-success me-1"></i>Ditemukan <strong>${jumlah}</strong> penerima untuk "<strong>${escapeHtml(keyword)}</strong>".` : `<i class="bi bi-exclamation-circle text-warning me-1"></i>Tidak ditemukan penerima untuk "<strong>${escapeHtml(keyword)}</strong>".`)
+                : `<i class="bi bi-people me-1"></i>Tersedia <strong>${jumlah}</strong> penerima. Cari berdasarkan nama, NIK, atau kecamatan.`;
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         // Auto-fill data saat pilih penerima
